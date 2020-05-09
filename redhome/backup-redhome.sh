@@ -1,18 +1,24 @@
 #!/bin/bash
 
 set -euo pipefail
+# shellcheck disable=SC2064
 trap "cd $(pwd)" ERR EXIT
 
-BACKUP="/home/christian/big-disk/redhome/$(date +%Y-%m-%d-%H-%M)"
+(( EUID != 0 )) && echo "Please run as root" && exit
+
+# reading and using the disk id prevents running the script on the wrong computer
 DISK=$(readlink -f /dev/disk/by-id/wwn-0x5e83a97f2ef90426)
 
+BACKUPS_DIR="/home/christian/backups"
+BACKUP="${BACKUPS_DIR}/redhome/$(date +%Y-%m-%d-%H-%M)"
+
 echo
-echo "Backup RedHome to $BACKUP"
+echo "Backup Redhome ${DISK} to $BACKUP"
 
 # Create backup folder
-mkdir -p "$BACKUP"
-cp "$0" "$BACKUP" # Backup this script
-cd "$BACKUP"
+mkdir -p "${BACKUP}"
+cp "$0" "${BACKUP}" # Backup this script
+cd "${BACKUP}"
 
 # Backup partition table
 sfdisk -d "${DISK}" >partition.dump
@@ -29,7 +35,7 @@ partclone.ext2 --clone -d -s "${DISK}2" | zstd -9 -T0 > part2.zst
 # Backup Encrypted Partition
 cryptsetup luksDump "${DISK}3" > luks.dump
 cryptsetup luksHeaderBackup "${DISK}3" --header-backup-file luksHeader.bak
-cryptsetup --key-file ~keyfile open "${DISK}3" crypto
+cryptsetup --key-file "${BACKUPS_DIR}/keyfile" open "${DISK}3" crypto
 lvm lvs > lvm.dump
 lvm vgcfgbackup -f vgcfgbackup.txt xubuntu-vg
 partclone.ext4 --clone -d -s /dev/xubuntu-vg/root | zstd -9 -T0 > part3.zst
@@ -40,5 +46,5 @@ cryptsetup close crypto
 echo "Flush caches"
 sync
 
-echo "Backup finished successfully"
+echo "Backup Redhome finished successfully"
 

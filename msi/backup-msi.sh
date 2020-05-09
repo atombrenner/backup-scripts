@@ -4,18 +4,20 @@ set -euo pipefail
 # shellcheck disable=SC2064
 trap "cd $(pwd)" ERR EXIT
 
-ROOT="$(realpath $(dirname "$0")/..)"
-KEYFILE="${ROOT}/keyfile"
-BACKUP="${ROOT}/backups/msi/$(date +%Y-%m-%d-%H-%M)"
+(( EUID != 0 )) && echo "Please run as root" && exit
+
+# reading and using the disk id prevents running the script on the wrong computer
 DISK=$(readlink -f /dev/disk/by-id/nvme-THNSN5256GPUK_NVMe_TOSHIBA_256GB_176B747OKSGU)
+BACKUPS_DIR="/home/christian/backups"
+BACKUP="${BACKUPS_DIR}/msi/$(date +%Y-%m-%d-%H-%M)"
 
 echo
 echo "Backup MSI ${DISK} to ${BACKUP}"
 
 # Create backup folder
-mkdir -p "$BACKUP"
-cp "$0" "$BACKUP" # Backup this script
-cd "$BACKUP"
+mkdir -p "${BACKUP}"
+cp "$0" "${BACKUP}" # Backup this script
+cd "${BACKUP}"
 
 # Backup partition table
 sfdisk -d "${DISK}" >partition.dump
@@ -32,7 +34,7 @@ partclone.ext4 --clone -d -s "${DISK}p2" | zstd -12 -T0 > part2.zst
 # Backup Encrypted Partition
 cryptsetup luksDump "${DISK}p3" > luksDump.bak
 cryptsetup luksHeaderBackup "${DISK}p3" --header-backup-file luksHeader.bak
-cryptsetup --key-file "${KEYFILE}" open "${DISK}p3" decrypted
+cryptsetup --key-file "${BACKUPS_DIR}/keyfile" open "${DISK}p3" decrypted
 partclone.ext4 --clone -d -s /dev/mapper/decrypted | zstd -12 -T0 > part3.zst
 cryptsetup close decrypted
 
@@ -40,4 +42,4 @@ cryptsetup close decrypted
 echo "Flush caches"
 sync
 
-echo "Backup finished successfully"
+echo "Backup MSI finished successfully"
